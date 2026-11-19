@@ -3,7 +3,8 @@
   "package": "net.mediarank.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "MediaRankMixin"
+    "MediaRankMixin",
+    "MediaRankNametagMixin"
   ],
   "injectors": {
     "defaultRequire": 1
