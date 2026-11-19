@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "mediarank",
+  "version": "1.0.0",
+  "name": "Media Rank (visuel)",
+  "description": "Affiche [MEDIA] au-dessus de ta tete, visible uniquement par toi.",
+  "environment": "client",
+  "mixins": ["mediarank.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.11",
+    "java": ">=21"
+  }
+}
