@@ -31,7 +31,7 @@ jobs:
           plugins {
               id 'fabric-loom' version '1.14-SNAPSHOT'
           }
-          version = '1.1.0'
+          version = '1.2.0'
           group = 'net.mediarank'
           base { archivesName = 'mediarank' }
           repositories {
@@ -55,7 +55,7 @@ jobs:
           {
             "schemaVersion": 1,
             "id": "mediarank",
-            "version": "1.1.0",
+            "version": "1.2.0",
             "name": "Media Rank (visuel)",
             "description": "Faux badge MEDIA visible uniquement par toi.",
             "environment": "client",
@@ -85,6 +85,24 @@ jobs:
           }
           EOF
 
+          mkdir -p src/main/resources/assets/minecraft/font src/main/resources/assets/minecraft/textures/font
+
+          cat > src/main/resources/assets/minecraft/font/default.json << 'EOF'
+          {
+            "providers": [
+              {
+                "type": "bitmap",
+                "file": "minecraft:font/mediarank_cam.png",
+                "ascent": 7,
+                "height": 8,
+                "chars": ["\uF3A7"]
+              }
+            ]
+          }
+          EOF
+
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAYAAAAmlE46AAAASklEQVR42t2QMQrAMAwDT8XP9PP8T3XKEkog7pRolDlhDu6OKW8DA4ruUpiySM2HuRujImXK0flZpKIr4Oma/QeK1JegJbgLHJgX6JIaXZo9LFQAAAAASUVORK5CYII=' | base64 -d > src/main/resources/assets/minecraft/textures/font/mediarank_cam.png
+
           cat > src/main/java/net/mediarank/FakeMedia.java << 'EOF'
           package net.mediarank;
 
@@ -102,7 +120,7 @@ jobs:
 
           public final class FakeMedia {
               private static boolean enabled = true;
-              private static int level = 1;
+              private static int level = 0;
               private static boolean loaded = false;
 
               private FakeMedia() {}
@@ -122,7 +140,7 @@ jobs:
                               props.load(in);
                           }
                           enabled = Boolean.parseBoolean(props.getProperty("enabled", "true"));
-                          level = Integer.parseInt(props.getProperty("level", "1"));
+                          level = Integer.parseInt(props.getProperty("rank", "0"));
                       }
                   } catch (Exception ignored) {
                   }
@@ -132,7 +150,7 @@ jobs:
                   try {
                       Properties props = new Properties();
                       props.setProperty("enabled", String.valueOf(enabled));
-                      props.setProperty("level", String.valueOf(level));
+                      props.setProperty("rank", String.valueOf(level));
                       try (OutputStream out = Files.newOutputStream(file())) {
                           props.store(out, "Fake Media Rank");
                       }
@@ -153,11 +171,10 @@ jobs:
 
               public static MutableComponent prefix() {
                   load();
-                  MutableComponent c = Component.literal("[MEDIA").withStyle(ChatFormatting.RED, ChatFormatting.BOLD);
+                  MutableComponent c = Component.literal("\uF3A7").withStyle(ChatFormatting.WHITE);
                   if (level > 0) {
                       c.append(Component.literal("+".repeat(level)).withStyle(plusColor(level), ChatFormatting.BOLD));
                   }
-                  c.append(Component.literal("] ").withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
                   return c;
               }
 
