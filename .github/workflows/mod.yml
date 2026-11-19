@@ -1,0 +1,330 @@
+name: Build mod
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generer le projet
+        shell: bash
+        run: |
+          mkdir -p src/main/java/net/mediarank/mixin src/main/resources
+
+          cat > settings.gradle << 'EOF'
+          pluginManagement {
+              repositories {
+                  maven { url = 'https://maven.fabricmc.net/' }
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          rootProject.name = 'mediarank'
+          EOF
+
+          cat > gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx2G
+          EOF
+
+          cat > build.gradle << 'EOF'
+          plugins {
+              id 'fabric-loom' version '1.14-SNAPSHOT'
+          }
+          version = '1.1.0'
+          group = 'net.mediarank'
+          base { archivesName = 'mediarank' }
+          repositories {
+              mavenCentral()
+          }
+          dependencies {
+              minecraft "com.mojang:minecraft:1.21.11"
+              mappings loom.officialMojangMappings()
+              modImplementation "net.fabricmc:fabric-loader:0.+"
+          }
+          tasks.withType(JavaCompile).configureEach {
+              options.release = 21
+          }
+          java {
+              sourceCompatibility = JavaVersion.VERSION_21
+              targetCompatibility = JavaVersion.VERSION_21
+          }
+          EOF
+
+          cat > src/main/resources/fabric.mod.json << 'EOF'
+          {
+            "schemaVersion": 1,
+            "id": "mediarank",
+            "version": "1.1.0",
+            "name": "Media Rank (visuel)",
+            "description": "Faux badge MEDIA visible uniquement par toi.",
+            "environment": "client",
+            "mixins": ["mediarank.mixins.json"],
+            "depends": {
+              "fabricloader": ">=0.16.0",
+              "minecraft": "~1.21.11",
+              "java": ">=21"
+            }
+          }
+          EOF
+
+          cat > src/main/resources/mediarank.mixins.json << 'EOF'
+          {
+            "required": true,
+            "package": "net.mediarank.mixin",
+            "compatibilityLevel": "JAVA_21",
+            "client": [
+              "MediaRankMixin",
+              "MediaRankNametagMixin",
+              "TabListMixin",
+              "CommandMixin"
+            ],
+            "injectors": {
+              "defaultRequire": 1
+            }
+          }
+          EOF
+
+          cat > src/main/java/net/mediarank/FakeMedia.java << 'EOF'
+          package net.mediarank;
+
+          import net.fabricmc.loader.api.FabricLoader;
+          import net.minecraft.ChatFormatting;
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.network.chat.Component;
+          import net.minecraft.network.chat.MutableComponent;
+
+          import java.io.InputStream;
+          import java.io.OutputStream;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.util.Properties;
+
+          public final class FakeMedia {
+              private static boolean enabled = true;
+              private static int level = 1;
+              private static boolean loaded = false;
+
+              private FakeMedia() {}
+
+              private static Path file() {
+                  return FabricLoader.getInstance().getConfigDir().resolve("fakemedia.properties");
+              }
+
+              private static void load() {
+                  if (loaded) return;
+                  loaded = true;
+                  try {
+                      Path p = file();
+                      if (Files.exists(p)) {
+                          Properties props = new Properties();
+                          try (InputStream in = Files.newInputStream(p)) {
+                              props.load(in);
+                          }
+                          enabled = Boolean.parseBoolean(props.getProperty("enabled", "true"));
+                          level = Integer.parseInt(props.getProperty("level", "1"));
+                      }
+                  } catch (Exception ignored) {
+                  }
+              }
+
+              private static void save() {
+                  try {
+                      Properties props = new Properties();
+                      props.setProperty("enabled", String.valueOf(enabled));
+                      props.setProperty("level", String.valueOf(level));
+                      try (OutputStream out = Files.newOutputStream(file())) {
+                          props.store(out, "Fake Media Rank");
+                      }
+                  } catch (Exception ignored) {
+                  }
+              }
+
+              public static boolean isEnabled() {
+                  load();
+                  return enabled;
+              }
+
+              private static ChatFormatting plusColor(int n) {
+                  if (n == 1) return ChatFormatting.GREEN;
+                  if (n == 2) return ChatFormatting.AQUA;
+                  return ChatFormatting.BLUE;
+              }
+
+              public static MutableComponent prefix() {
+                  load();
+                  MutableComponent c = Component.literal("[MEDIA").withStyle(ChatFormatting.RED, ChatFormatting.BOLD);
+                  if (level > 0) {
+                      c.append(Component.literal("+".repeat(level)).withStyle(plusColor(level), ChatFormatting.BOLD));
+                  }
+                  c.append(Component.literal("] ").withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
+                  return c;
+              }
+
+              private static void say(String msg) {
+                  Minecraft mc = Minecraft.getInstance();
+                  if (mc.player != null) {
+                      mc.player.displayClientMessage(Component.literal(msg).withStyle(ChatFormatting.GREEN), false);
+                  }
+              }
+
+              public static boolean handleCommand(String raw) {
+                  if (raw == null) return false;
+                  String cmd = raw.trim();
+                  if (cmd.startsWith("/")) cmd = cmd.substring(1);
+                  String[] parts = cmd.split("\\s+");
+                  String name = parts[0].toLowerCase();
+
+                  if (name.equals("fakemedia")) {
+                      load();
+                      enabled = !enabled;
+                      save();
+                      say(enabled ? "Fake media : ACTIVE" : "Fake media : DESACTIVE");
+                      return true;
+                  }
+
+                  if (name.equals("fakerank")) {
+                      load();
+                      if (parts.length < 2) {
+                          say("Utilisation : /fakerank 0, 1, 2 ou 3");
+                          return true;
+                      }
+                      try {
+                          int n = Integer.parseInt(parts[1]);
+                          if (n < 0 || n > 3) throw new NumberFormatException();
+                          level = n;
+                          save();
+                          say("Rang : " + (n == 0 ? "aucun" : "+".repeat(n)));
+                      } catch (NumberFormatException e) {
+                          say("Utilisation : /fakerank 0, 1, 2 ou 3");
+                      }
+                      return true;
+                  }
+                  return false;
+              }
+          }
+          EOF
+
+          cat > src/main/java/net/mediarank/mixin/MediaRankMixin.java << 'EOF'
+          package net.mediarank.mixin;
+
+          import net.mediarank.FakeMedia;
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.network.chat.Component;
+          import net.minecraft.world.entity.Entity;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+          @Mixin(Entity.class)
+          public abstract class MediaRankMixin {
+
+              @Inject(method = "getDisplayName", at = @At("RETURN"), cancellable = true)
+              private void mediarank$addRank(CallbackInfoReturnable<Component> cir) {
+                  if (!FakeMedia.isEnabled()) return;
+                  Minecraft client = Minecraft.getInstance();
+                  if (client == null || client.player == null) return;
+                  if ((Object) this != client.player) return;
+                  cir.setReturnValue(FakeMedia.prefix().append(cir.getReturnValue()));
+              }
+          }
+          EOF
+
+          cat > src/main/java/net/mediarank/mixin/MediaRankNametagMixin.java << 'EOF'
+          package net.mediarank.mixin;
+
+          import net.mediarank.FakeMedia;
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.client.renderer.entity.LivingEntityRenderer;
+          import net.minecraft.world.entity.LivingEntity;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+          @Mixin(LivingEntityRenderer.class)
+          public abstract class MediaRankNametagMixin {
+
+              @Inject(method = "shouldShowName", at = @At("RETURN"), cancellable = true)
+              private void mediarank$showOwnName(LivingEntity entity, double distance, CallbackInfoReturnable<Boolean> cir) {
+                  if (!FakeMedia.isEnabled()) return;
+                  Minecraft client = Minecraft.getInstance();
+                  if (client.player == null || entity != client.player) return;
+                  if (client.options.getCameraType().isFirstPerson() || client.options.hideGui) return;
+                  cir.setReturnValue(true);
+              }
+          }
+          EOF
+
+          cat > src/main/java/net/mediarank/mixin/TabListMixin.java << 'EOF'
+          package net.mediarank.mixin;
+
+          import net.mediarank.FakeMedia;
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.client.gui.components.PlayerTabOverlay;
+          import net.minecraft.client.multiplayer.PlayerInfo;
+          import net.minecraft.network.chat.Component;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+          @Mixin(PlayerTabOverlay.class)
+          public abstract class TabListMixin {
+
+              @Inject(method = "getNameForDisplay", at = @At("RETURN"), cancellable = true)
+              private void mediarank$tab(PlayerInfo info, CallbackInfoReturnable<Component> cir) {
+                  if (!FakeMedia.isEnabled()) return;
+                  Minecraft mc = Minecraft.getInstance();
+                  if (mc.player == null || mc.getConnection() == null) return;
+                  PlayerInfo own = mc.getConnection().getPlayerInfo(mc.player.getUUID());
+                  if (own != info) return;
+                  cir.setReturnValue(FakeMedia.prefix().append(cir.getReturnValue()));
+              }
+          }
+          EOF
+
+          cat > src/main/java/net/mediarank/mixin/CommandMixin.java << 'EOF'
+          package net.mediarank.mixin;
+
+          import net.mediarank.FakeMedia;
+          import net.minecraft.client.multiplayer.ClientPacketListener;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+          @Mixin(ClientPacketListener.class)
+          public abstract class CommandMixin {
+
+              @Inject(method = "sendCommand", at = @At("HEAD"), cancellable = true)
+              private void mediarank$command(String command, CallbackInfo ci) {
+                  if (FakeMedia.handleCommand(command)) ci.cancel();
+              }
+
+              @Inject(method = "sendUnsignedCommand", at = @At("HEAD"), cancellable = true, require = 0)
+              private void mediarank$unsigned(String command, CallbackInfoReturnable<Boolean> cir) {
+                  if (FakeMedia.handleCommand(command)) cir.setReturnValue(true);
+              }
+          }
+          EOF
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: current
+
+      - run: gradle build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mediarank-jar
+          path: |
+            build/libs/*.jar
+            !build/libs/*-sources.jar
